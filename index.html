@@ -334,6 +334,9 @@
     let aiReasoning = "";
     let strategicBluff = "";
     let committedAiChoice = null;   // ★ ここに AI の次の手を保持する
+    let lastUserChoiceGlobal = null;
+    let lastAiChoiceGlobal   = null;
+    let lastOutcomeGlobal    = null;
 
     let gameSettings = {
       initialMaxPattern: 2,
@@ -1086,6 +1089,9 @@
 
         // 勝敗判定・状態更新・UI更新
         const outcome = determineOutcome(userChoice, currentAiChoice);
+        lastUserChoiceGlobal = userChoice;
+        lastAiChoiceGlobal   = currentAiChoice;
+        lastOutcomeGlobal    = outcome;
         updateGameState(outcome, userChoice, currentAiChoice);
         updateUI(outcome, userChoice, currentAiChoice);
 
@@ -1096,6 +1102,8 @@
 
           // 次ラウンドの AI の手を先に決める
           await updateNextMoveHint();
+          // ─── もう一度 UI 更新して一回目から手を表示 ───
+            updateUI(lastOutcomeGlobal, lastUserChoiceGlobal, lastAiChoiceGlobal);
         }
 
         debugLog(`--- Round ${roundsPlayed} 終了さー ---`);
