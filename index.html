@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>じゃんけんAI キジムン 改</title> <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>じゃんけんAIキジムン激おこモード</title> <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.2.0/dist/tf.min.js"></script>
   <style>
@@ -224,7 +224,7 @@
             <option value="frequency">頻度戦略</option>
             <option value="pattern">パターン戦略+</option> <option value="nn">深層学習戦略</option>
             <option value="hybrid" selected>ハイブリッド戦略+</option> </select>
-         <label for="show-reasoning">キジムンの考えを見る:</label>
+         <label for="show-reasoning">キジムンの次の手を見る:</label>
          <input type="checkbox" id="show-reasoning">
       </div>
       <div id="bluff">キジムン: よーし、じゃんけんするさー！</div>
@@ -263,7 +263,7 @@
   </div>
 
   <script>
-    // --- グローバル変数、定数、UI要素、初期化関数などは基本的に変更なし ---
+    // --- グローバル変数、定数、UI要素、初期化関数などは基本的に変更なし ---    
     let jankenModel;
     let MODEL_SEQ_LEN = 5;
     const trainBuffer = { xs: [], ys: [] };
@@ -333,7 +333,7 @@
     let roundsPlayed = 0;
     let aiReasoning = "";
     let strategicBluff = "";
-    let committedAiChoice = null;
+    let committedAiChoice = null;   // ★ ここに AI の次の手を保持する
 
     let gameSettings = {
       initialMaxPattern: 2,
@@ -813,9 +813,6 @@
         return { predicted: finalPrediction.predicted, reason: finalPrediction.reason, confidence: finalPrediction.confidence };
     }
 
-
-    // --- chooseAIHand, determineOutcome, updateGameState, generateStrategicBluff, updateUI, checkGameEnd, playRound は基本的に変更なし ---
-    // (predictUserChoice の返り値が変わったので、chooseAIHand の呼び出し元 playRound で confidence を受け取る必要はなくなった)
     function chooseAIHand(predictedChoice, predictionReason /*, predictionConfidence は削除 */) {
         let aiChoice, reason;
         // const adjustedEpsilon = epsilon / (predictionConfidence + 0.1); // 信頼度に応じたε調整も可能だが今回はシンプルに
@@ -1044,6 +1041,28 @@
          return false; // ゲーム続行
      }
     /**
+     * 次の手を予測して表示
+     */
+    async function updateNextMoveHint() {
+      // プレイヤー操作をロック
+      choiceBtns.forEach(btn => btn.disabled = true);
+
+      // AI の次の手を予測＆コミット
+      const prediction = await predictUserChoice();
+      const aiDecision = chooseAIHand(prediction.predicted, prediction.reason);
+      committedAiChoice = aiDecision.aiChoice;
+
+      // 「次の手は〇〇だよ」を表示
+      aiReasoning = `次の手は ${committedAiChoice} だよ`;
+      aiReasoningEl.textContent        = aiReasoning;
+      aiReasoningEl.style.visibility   = showReasoningCheckbox.checked ? 'visible' : 'hidden';
+      aiReasoningEl.style.opacity      = showReasoningCheckbox.checked ? '1' : '0';
+
+      // プレイヤー操作をアンロック
+      choiceBtns.forEach(btn => btn.disabled = false);
+    }
+
+    /**
      * 1ラウンド実行 (predictUserChoice の呼び出し部分変更)
      */
      async function playRound(userChoice) {
@@ -1051,41 +1070,36 @@
 
         debugLog(`--- Round ${roundsPlayed + 1} 開始さー ---`);
         debugLog(`あなたの手: ${userChoice}`);
+
+        // 全ボタンロック
         choiceBtns.forEach(btn => btn.disabled = true);
 
+        // AIの手はすでに committedAiChoice に入っている
+        const currentAiChoice = committedAiChoice;
+        debugLog(`事前決定されたAIの手: ${currentAiChoice}`);
+
+        // プレイヤー手を履歴に追加
         updateGameHistory(userChoice);
-        detectStrategyChange(); // ★ パターン忘却処理を含む可能性あり
+        detectStrategyChange();
         assessOpponentRandomness();
         updateDynamicMaxPattern();
 
-        // ★ 予測実行 (返り値に confidence も含むが、chooseAIHand では直接使わない)
-        const prediction = await predictUserChoice();
-
-        // ★ AIの手を決定 (予測結果と理由を渡す)
-        const aiDecision = chooseAIHand(prediction.predicted, prediction.reason);
-        const currentAiChoice = aiDecision.aiChoice;
-        aiReasoning = aiDecision.reason; // ★ AIの思考理由を格納
-
+        // 勝敗判定・状態更新・UI更新
         const outcome = determineOutcome(userChoice, currentAiChoice);
-        updateGameState(outcome, userChoice, currentAiChoice); // ★ オンライン学習もここ
-        updateUI(outcome, userChoice, currentAiChoice); // ★ UI更新
+        updateGameState(outcome, userChoice, currentAiChoice);
+        updateUI(outcome, userChoice, currentAiChoice);
 
         if (!checkGameEnd()) {
-            // 次のブラフ生成 (次の予測は generateStrategicBluff 内で行う必要があれば行う)
-             const lastOutcome = outcome;
-             const lastUserChoice = userChoice;
-             const lastAiChoice = currentAiChoice;
-             // generateStrategicBluff に渡す predictedChoice はオプション。なくても動作する。
-             // 必要なら再度 predictUserChoice を呼ぶ
-             // const nextPredictionForBluff = await predictUserChoice();
-             generateStrategicBluff(prediction.predicted, lastAiChoice, lastUserChoice, lastOutcome);
-             bluffEl.textContent = strategicBluff;
+          // ブラフ生成
+          generateStrategicBluff();
+          bluffEl.textContent = strategicBluff;
 
-            choiceBtns.forEach(btn => btn.disabled = false);
+          // 次ラウンドの AI の手を先に決める
+          await updateNextMoveHint();
         }
 
         debugLog(`--- Round ${roundsPlayed} 終了さー ---`);
-    }
+      }
 
     // --- イベントリスナー ---
     choiceBtns.forEach(btn => {
@@ -1107,9 +1121,9 @@
     // --- ゲーム開始 ---
     document.addEventListener('DOMContentLoaded', async (event) => {
         debugLog("DOM読み込み完了さー。");
-        // ★修正: NNモデルの初期化を待つ
-        await initJankenModel(); // NNモデルを初期化 (非同期)
-        initGame(); // ゲーム状態を初期化
+        await initJankenModel();
+        initGame();
+        await updateNextMoveHint();
     });
 
   </script>
