@@ -449,7 +449,7 @@
     /**
      * ゲームの初期化またはリセット
      */
-    function initGame() {
+     async function initGame() {
         debugLog("ゲーム初期化開始さー...");
         // 変数リセット
         committedAiChoice = null;
@@ -490,6 +490,8 @@
         choiceBtns.forEach(btn => btn.disabled = false);
         // debugInfoEl.innerHTML = "デバッグ情報:"; // デバッグ情報クリア (任意)
         debugLog(`ゲーム初期化完了さー。モデルタイプ: ${setting.label}`);
+        // 初回ラウンド用に AI の手を先に決定してコミット
+        await updateNextMoveHint();
     }
 
 
